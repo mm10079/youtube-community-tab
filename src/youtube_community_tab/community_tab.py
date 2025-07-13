@@ -6,16 +6,18 @@ from .helpers.utils import safely_get_value_from_key, get_auth_header, CLIENT_VE
 from .requests_handler import requests_cache
 from .post import Post
 
+COMMUNITY_TAB = "posts"
 
 class CommunityTab(object):
     FORMAT_URLS = {
-        "COMMUNITY_TAB": "https://www.youtube.com/{}/{}/community",
+        "ACCOUNT_COMMUNITY_TAB": "https://www.youtube.com/{}/" + COMMUNITY_TAB,
+        "ID_COMMUNITY_TAB": "https://www.youtube.com/{}/{}/" + COMMUNITY_TAB,
         # HARD_CODED: This key seems to be constant to everyone, IDK
         "BROWSE_ENDPOINT": "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
     }
-
     REGEX = {
         "YT_INITIAL_DATA": "ytInitialData = ({(?:(?:.|\n)*)?});</script>",
+        "CANONCIAL_URL": r'<link rel="canonical" href="https://www\.youtube\.com/channel/([a-zA-Z0-9_-]+)">'
     }
 
     def __init__(self, channel_name):
@@ -40,10 +42,14 @@ class CommunityTab(object):
         if self.posts_continuation_token is None:
             try:
                 # Get posts from community tab enpoint
-                self.community_url = CommunityTab.FORMAT_URLS["COMMUNITY_TAB"].format("c", self.channel_name)
-                r = requests_cache.get(self.community_url, expire_after=expire_after, headers=headers)
+                if '@' in self.channel_name:
+                    self.community_url = CommunityTab.FORMAT_URLS["ACCOUNT_COMMUNITY_TAB"].format(self.channel_name)
+                    r = requests_cache.get(self.community_url, expire_after=expire_after, headers=headers)
+                else:
+                    self.community_url = CommunityTab.FORMAT_URLS["ID_COMMUNITY_TAB"].format("channel", self.channel_name)
+                    r = requests_cache.get(self.community_url, expire_after=expire_after, headers=headers)
                 if r.status_code != 200:
-                    self.community_url = CommunityTab.FORMAT_URLS["COMMUNITY_TAB"].format("channel", self.channel_name)
+                    self.community_url = CommunityTab.FORMAT_URLS["ID_COMMUNITY_TAB"].format("c", self.channel_name)
                     r = requests_cache.get(self.community_url, expire_after=expire_after, headers=headers)
 
                 if r.status_code != 200:
@@ -54,9 +60,12 @@ class CommunityTab(object):
 
                 m = re.findall(CommunityTab.REGEX["YT_INITIAL_DATA"], r.text)
                 data = json.loads(m[0])
-
                 if self.channel_id is None:
-                    self.channel_id = data["metadata"]["channelMetadataRenderer"]["externalId"]
+                    match = re.search(CommunityTab.REGEX["CANONCIAL_URL"], r.text)
+                    if match:
+                        self.channel_id = match.group(1)
+                    else:
+                        raise Exception("Can't find channel_id")
 
             except IndexError as e:
                 print("[Can't find yt_initial_data using the regex]")
@@ -136,7 +145,7 @@ class CommunityTab(object):
     def get_community_tab(tabs):
         COMMUNITY_TAB_INDEX = 0
         for tabs_community in tabs:
-            if tabs_community["tabRenderer"]["endpoint"]["commandMetadata"]["webCommandMetadata"]["url"].find('posts') is not -1:
+            if tabs_community["tabRenderer"]["endpoint"]["commandMetadata"]["webCommandMetadata"]["url"].find(COMMUNITY_TAB) != -1:
                 break
             COMMUNITY_TAB_INDEX = COMMUNITY_TAB_INDEX+1
         if len(tabs) >= COMMUNITY_TAB_INDEX + 1:

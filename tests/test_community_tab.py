@@ -4,7 +4,7 @@ EXPIRATION_TIME = 24 * 60 * 60  # requests cache expiration
 
 
 def test_community_tab():
-    ct = CommunityTab("UC1GH6W6CzBUCR_3oHegiBGw")
+    ct = CommunityTab("vsauce1")
     ct.load_posts(expire_after=EXPIRATION_TIME)
 
     num_posts = len(ct.posts)
